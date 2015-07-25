@@ -39,8 +39,7 @@ ALIEN_RANKS = [
     "Elite",
     "Uber"
 ]
-
-
+ALIEN_DEFAULT_ITEMS = [ITEM_ALIEN_GRENADE, ITEM_ALLOY_PLATING, ITEM_SCOPE]
 sectoidfName = ["Glip","Gleep","Glup","Glorp","Gloop","Glop","Glump","Glerp","Glurp","Glarp"]
 sectoidlName = ["Glop","Glarp","Glupple","Glorple","Gloopley","Glopperson","Glep","Glommery"]
 thinfName = ["T.","P.","H.","Z.","K.","A.","F.","X.","P.","L.","W.","S.","V."]
@@ -153,9 +152,7 @@ def create_alien(alien_id, room_index, species, **kwargs):
     if not 'weapon' in kwargs:
         kwargs['weapon'] = ALIEN_SPECIES[species][SPECIES_WEAPON_CLASS]()
     if not 'items' in kwargs:
-        kwargs['items'] = [random.choice([ITEM_ALIEN_GRENADE,
-                                          ITEM_ALLOY_PLATING,
-                                          ITEM_SCOPE])]
+        kwargs['items'] = [random.choice(ALIEN_DEFAULT_ITEMS)]
     if not 'mods' in kwargs:
         kwargs['mods'] = []
 
