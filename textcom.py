@@ -380,7 +380,8 @@ VAN_DOORN_RETORTS = [
 ]
 
 #Soldier names
-VAN_DOORN = "Van Doorn"
+BRADFORD  = 'Bradford'
+VAN_DOORN = 'Van Doorn'
 
 sectoidfName = ["Glip","Gleep","Glup","Glorp","Gloop","Glop","Glump","Glerp","Glurp","Glarp"]
 sectoidlName = ["Glop","Glarp","Glupple","Glorple","Gloopley","Glopperson","Glep","Glommery"]
@@ -457,17 +458,8 @@ NUMBER_OF_ROOMS = 31
 ########################################################################
 
 # to be removed
-pod = []
 room = [[]]
 roomNo = -0
-
-def p(spk,q): #print with speaker and possibly delay
-    if spk != 0:
-        print(str(spk)+': "'+str(q)+'"')
-    else:
-        print(q)
-    #s(len(q)/50)
-    #if uncommented, this will add delay to all instances of 'print' from this def
 
 def s(t):
     tm.sleep(t)
@@ -634,13 +626,10 @@ class Explosive(Item):
         self.sound_descr = sound_descr
 
     def use(self, soldier):
-        global alloy
-        global elerium
-        global fragments
-        global meld
+        global room
         global roomNo
 
-        p(0, self.sound_descr)
+        print(self.sound_descr)
         #the grenade only affects some of the aliens in the room, but is guaranteed to hit at least 1
         #it's not a bug, it's a feature
         affected = room[roomNo]
@@ -649,11 +638,9 @@ class Explosive(Item):
                 alien = affected[i]
                 alien.hp -= self.damage
                 alien.cover = COVER_NONE
-                fragments += getLoot(alien)[0]
-                elerium += getLoot(alien)[1]
-                meld += getLoot(alien)[2]
-                alloy += getLoot(alien)[3]
-                alien.check_death()
+                if alien.check_death():
+                    drop(soldier)
+                    soldier.check_promotion()
             except (IndexError):
                 i = 0 #reset the loop
 
@@ -697,6 +684,14 @@ class Unit:
         self.on_overwatch = False
         self.alive = True
 
+    def _handle_kill(self, target):
+        '''
+        Called when an opponent was killed.
+
+        The default handler does nothing
+        '''
+        pass
+
     def _handle_overwatch(self, target):
         '''
         Generic overwatch handler which shoots at the target
@@ -709,7 +704,7 @@ class Unit:
             hit_chance += 10
         # Carbines get an aim bonus
         if type(self.weapon) is BallisticCarbine                              \
-           or type(soldier.weapon) is LaserCarbine                            \
+           or type(self.weapon) is LaserCarbine                               \
            or type(self.weapon) is PlasmaCarbine:
             hit_chance += 10
         if hit_chance < 0:
@@ -742,7 +737,7 @@ class Unit:
         '''
         if self.on_overwatch:
             self.on_overwatch = False
-            p(0, str(self) + ' reacts!')
+            status(str(self) + ' reacts!')
             self._handle_overwatch(target)
             return True
         return False
@@ -761,12 +756,13 @@ class Unit:
         hit_chance = self.aim_at(target) + situation_modificator
         damage = self.weapon.shoot()
         if rd.randrange(0, 100) < hit_chance:
-            p(0, str(damage) + ' damage!')
+            status(str(damage) + ' damage!')
             target.hp -= damage
-            target.check_death()
+            if target.check_death():
+                self._handle_kill(target)
             return True
         else:
-            p(0, ' Missed!')
+            status(' Missed!')
         return False
 
 
@@ -791,32 +787,137 @@ class Soldier(Unit):
         return XCOM_RANKS[self.nrank] + middle + self.lastname
 
     def _handle_death(self):
-        soldier.alive = False
-        p(0, str(soldier) + ' was killed!')
-        if not soldier.lastname == "Bradford":
-            p("Bradford", "Commander, our unit was killed.")
-            p("Bradford", "We were able to recover some materials, however.")
+        self.alive = False
+        status(str(self) + ' was killed!')
+        if not self.lastname == "Bradford":
+            print('Bradford: Commander, our unit was killed.')
+            print('Bradford: We were able to recover some materials, however.')
             print("Fragments:", fragments)
             print("Elerium:", elerium)
             print("Meld:", meld)
             print("Alloy:", alloy)
             print('Total Score: ' + str(fragments + elerium + meld + alloy    \
-                                        + soldier.xp + roomNo))
+                                        + self.xp + roomNo))
         else:
-            p("Council Member",
-              "Commander...you 'volunteered' your Central Officer to fight on the front lines.")
-            p("Council Member","This was a foolish endeavour, and as a result, you lost him.")
+            print("Council Speaker: Commander...you 'volunteered' your Central"
+                 'Officer to fight on the front lines.')
+            print('Council Speaker: This was a foolish endeavour, and as a'
+                  'result, you lost him.')
             print('Monthly Rating: F')
-            p("Council Member",
-              "We have negotiated...a deal with the aliens, and so...your services are no longer required.")
-            p("Council Member",
-              "We are...terminating the XCOM Project, effective...immediately.")
+            print('Council Speaker: We have negotiated...a deal with the'
+                  'aliens, and so...your services are no longer required.')
+            print('Council Speaker: We are...terminating the XCOM Project,'
+                  'effective...immediately.')
         #doesn't want to stop the whole game straight away for some reason
         quit
 
+    def _handle_kill(self, target):
+        '''
+        Handle a killed alien
+
+        Calculates the loot and xp and performs due promotions.
+        '''
+        global alloy
+        global elerium
+        global fragments
+        global meld
+
+        self.xp += target.nrank * abs(target.hp)
+        fragments += abs(target.hp)
+        elerium += target.nrank
+        meld += 2 * target.nrank
+        if ITEM_ALIEN_GRENADE in target.items:
+            elerium += 2
+        elif ITEM_ALLOY_PLATING in target.items:
+            alloy += 2
+        elif ITEM_SCOPE in target.items:
+            fragments += 2
+        e, f = target.weapon.get_materials()
+        elerium += e
+        fragments += f
+        self.check_promotion()
+
     def _handle_overwatch(self, target):
         if super()._handle_overwatch(target) == False:
-            p(spk, self.get_overwatch_miss_retort())
+            self.say(self.get_overwatch_miss_retort())
+
+    def check_promotion(self):
+        was_promoted = False
+        if self.xp >= 25 and self.nrank < RANK_SQUADDIE:
+            self.nrank = RANK_SQUADDIE
+            self.hp += 1
+            self.aim += 2
+            self.mobility += 1
+            for _ in range(2):
+                drop(self)
+            was_promoted = True
+        elif self.xp >= 100 and self.nrank < RANK_CORPORAL:
+            self.nrank = RANK_CORPORAL
+            self.hp += 1
+            self.aim += 2
+            self.mobility += 1
+            for _ in range(2):
+                drop(self)
+            was_promoted = True
+        elif self.xp >= 300 and self.nrank < RANK_SERGEANT:
+            nicknames = XCOM_UNISEX_NICKNAMES_ASSAULT                         \
+                        + XCOM_UNISEX_NICKNAMES_HEAVY                         \
+                        + XCOM_UNISEX_NICKNAMES_SNIPER                        \
+                        + XCOM_UNISEX_NICKNAMES_SUPPORT
+            if self.sex == SEX_FEMALE:
+                nicknames += XCOM_FEMALE_NICKNAMES_ASSAULT                    \
+                             + XCOM_FEMALE_NICKNAMES_HEAVY                    \
+                             + XCOM_FEMALE_NICKNAMES_MEC                      \
+                             + XCOM_FEMALE_NICKNAMES_SNIPER                   \
+                             + XCOM_FEMALE_NICKNAMES_SUPPORT
+            else:
+                nicknames += XCOM_MALE_NICKNAMES_ASSAULT                      \
+                             + XCOM_MALE_NICKNAMES_HEAVY                      \
+                             + XCOM_MALE_NICKNAMES_MEC                        \
+                             + XCOM_MALE_NICKNAMES_SNIPER                     \
+                             + XCOM_MALE_NICKNAMES_SUPPORT
+            self.nickname = rd.choice(nicknames)
+            status(XCOM_RANKS[self.nrank] + ' ' + self.firstname + ' '        \
+                   + self.lastname  + " earned the nickname '" + self.nickname\
+                   + "'")
+            self.nrank = RANK_SERGEANT
+            self.hp += 2
+            self.aim += 1
+            self.mobility += 1
+            for _ in range(2):
+                drop(self)
+            was_promoted = True
+        elif self.xp >= 900 and self.nrank < RANK_LIEUTENANT:
+            self.nrank = RANK_LIEUTENANT
+            self.hp += 1
+            self.aim += 1
+            for _ in range(2):
+                drop(self)
+            was_promoted = True
+        elif self.xp >= 1500 and self.nrank < RANK_CAPTAIN:
+            self.nrank = RANK_CAPTAIN
+            self.hp += 2
+            self.aim += 1
+            for _ in range(4):
+                drop(self)
+            was_promoted = True
+        elif self.xp >= 2000 and self.nrank < RANK_MAJOR:
+            self.nrank = RANK_MAJOR
+            self.hp += 1
+            self.aim += 1
+            self.mobility += 1
+            for _ in range(4):
+                drop(self)
+            was_promoted = True
+        elif self.xp >= 3000 and self.nrank < RANK_COLONEL:
+            self.nrank = RANK_COLONEL
+            self.hp += 1
+            self.aim += 1
+            for _ in range(6):
+                drop(self)
+            was_promoted = True
+        if was_promoted:
+            status(str(self) + ' was promoted to ' + XCOM_RANKS[self.nrank])
 
     def get_overwatch_confirmation(self):
         return 'Got it, on Overwatch.'
@@ -834,11 +935,17 @@ class Soldier(Unit):
         middle = ' '
         if self.nickname:
             middle = " '" + self.nickname + "' "
-        p(0, XCOM_RANKS[self.nrank] + ' ' + self.firstname + middle           \
-          + self.lastname + ' - ' + str(self.hp) + ' HP' + ' - '              \
-          + str(self.aim) + ' Aim'+ ' - ' +str(self.mobility) + ' AP')
-        p(0, 'Items: ' + self.weapon.name + ', ' + self.items[0].name + ', '  \
+        print(XCOM_RANKS[self.nrank] + ' ' + self.firstname + middle          \
+              + self.lastname + ' - ' + str(self.hp) + ' HP' + ' - '          \
+              + str(self.aim) + ' Aim'+ ' - ' +str(self.mobility) + ' AP')
+        print('Items: ' + self.weapon.name + ', ' + self.items[0].name + ', ' \
           + self.items[1].name)
+
+    def say(self, message):
+        '''
+        Print the name and the message
+        '''
+        print(XCOM_RANKS[self.nrank] + self.lastname + ': ' + message)
 
 
 #we define the aliens here. they are initialised as sectoids but this can be changed with the definitions, such
@@ -857,11 +964,7 @@ class Alien(Unit):
                + self.firstname + " " + self.lastname
 
     def _handle_death(self):
-        #kills, loots and removes the alien from the game
-        p(0, str(self) + ' died!')
-        getLoot(self)
-        drop()
-        checkXP()
+        status(str(self) + ' died!')
         self.alive = False
         room[roomNo].pop(room[roomNo].index(self))
 
@@ -998,15 +1101,21 @@ class AdvanceAction(Action):
             checkspot(roomNo)
             scatter(roomNo)
         else:
-            p(spk,"Reached an access point, Commander. Requesting additional goods!")
-            p(spk,"We only have a short time before the aliens close it off!")
+            if self.soldier.lastname == BRADFORD:
+                tactical = 'Tactical Supervisor'
+            else:
+                tactical = BRADFORD
+            print(tactical + ': Reached an access point, Commander. Requesting'
+                             'additional goods!')
+            print(tactical + ': We only have a short time before the aliens'
+                             'close it off!')
             ap = 60
             while ap != 0:
                 print("Fragments:",fragments)
                 print("Elerium:",elerium)
                 print("Meld:",meld)
                 print("Alloy:",alloy)
-                sel = displayShop(ap)
+                sel = displayShop(ap, self.soldier)
 
                 if sel == "AimBonus":
                     soldier.mods.append("Aim")
@@ -1069,7 +1178,7 @@ class AdvanceAction(Action):
                     ap = 0
                 s(.5)
             s(.5)
-            p(spk,"All out of time! I'll have to keep moving!")
+            soldier.say("All out of time! I'll have to keep moving!")
             s(.5)
             roomNo += 1
             checkspot(roomNo)
@@ -1092,22 +1201,13 @@ class FireAction(Action):
 
     def __str__(self):
         return '(~{} dmg)(6AP) Fire {} at {} - {} HP - ({}%)'.\
-               format(soldier.weapon.damage, soldier.weapon.name, self.target,\
-                      self.target.hp, self.hit_chance)
+               format(self.soldier.weapon.damage, self.soldier.weapon.name,   \
+                      self.target, self.target.hp, self.hit_chance)
 
     def perform(self):
-        global alloy
-        global elerium
-        global fragments
-        global meld
-
         self._calc_ap()
-        p(spk, self.soldier.get_retort())
-        if self.soldier.shoot_at(self.target):
-            fragments += getLoot(self.target)[0]
-            elerium += getLoot(self.target)[1]
-            meld += getLoot(self.target)[2]
-            alloy += getLoot(self.target)[3]
+        self.soldier.say(self.soldier.get_retort())
+        self.soldier.shoot_at(self.target)
 
 
 class HunkerDownAction(Action):
@@ -1116,9 +1216,10 @@ class HunkerDownAction(Action):
 
     def perform(self):
         self._calc_ap()
-        if soldier.cover == COVER_HALF or soldier.cover == COVER_FULL:
-            soldier.hunkerbonus += 20
-        p(spk, 'Taking cover!')
+        if self.soldier.cover == COVER_HALF                                   \
+           or self.soldier.cover == COVER_FULL:
+            self.soldier.hunkerbonus += 20
+        self.soldier.say('Taking cover!')
         s(.5)
 
 
@@ -1128,7 +1229,7 @@ class OverwatchAction(Action):
 
     def perform(self):
         self._calc_ap()
-        p(spk, self.soldier.get_overwatch_confirmation())
+        self.soldier.say(self.soldier.get_overwatch_confirmation())
         s(.5)
         self.soldier.ap = 0 # TODO check if this is necessary
         self.soldier.on_overwatch = True
@@ -1140,7 +1241,7 @@ class ReloadAction(Action):
 
     def perform(self):
         self._calc_ap()
-        soldier.reload()
+        self.soldier.reload()
         s(.5)
 
 
@@ -1151,15 +1252,15 @@ class RepositionAction(Action):
     def perform(self):
         self._calc_ap()
         # if any aliens are on overwatch, check and be shot at if they are
-        check_for_alien_overwatch()
+        check_for_alien_overwatch(self.soldier)
         self.soldier.cover = 40 # ?!
-        p(spk, self.soldier.get_reposition_confirmation())
+        self.soldier.say(self.soldier.get_reposition_confirmation())
         s(.5)
         #chance to flank an alien
         if rd.randrange(0, 100) < 50:
             alien = rd.choice(room[roomNo])
 
-            p(0, str(alien) + ' is flanked!')
+            status(str(alien) + ' is flanked!')
             alien.cover = COVER_FLANKED # TODO: flanked should be worse than no cover
 
 
@@ -1277,11 +1378,11 @@ def scatter(roomNo):
     for i in range(len(room[roomNo])):
         room[roomNo][i].cover = rd.choice(covernumber)
         if not room[roomNo][i].cover == -10:
-            p(0, str(room[roomNo][i]) + ' moves to '                          \
+            status(str(room[roomNo][i]) + ' moves to '                        \
               + cover[covernumber.index(room[roomNo][i].cover)] + ' cover!')
             s(.5)
         else:
-            p(0, str(room[roomNo][i]) + " can't find any cover!")
+            status(str(room[roomNo][i]) + " can't find any cover!")
             s(.5)
     print()
 
@@ -1289,7 +1390,7 @@ def scatter(roomNo):
 #could probably be merged in with scatter(). Tells you that you've seen an alien
 def checkspot(roomNo):
     for i in range(len(room[roomNo])):
-        p(0, str(room[roomNo][i]) + ' spotted!')
+        status(str(room[roomNo][i]) + ' spotted!')
     s(.5)
 
 
@@ -1304,7 +1405,7 @@ def prompt_player(actions):
 
 
 #ah, the player's turn.
-def playerTurn():
+def playerTurn(soldier):
     soldier.ap = soldier.mobility
     soldier.on_overwatch = False
     soldier.hunkerbonus = 0
@@ -1322,11 +1423,11 @@ def playerTurn():
     # while the player has spare action points left
     while soldier.ap > 0 and soldier.alive == True:
         # displays stats
-        p(0, 'HP: ' + str(soldier.hp) + '\tAP: ' + str(soldier.ap))
+        status('HP: ' + str(soldier.hp) + '\tAP: ' + str(soldier.ap))
         if soldier.cover >= 40:
-            p(0, str(soldier) + ' is in FULL cover.')
-        elif soldier.cover <= 20:
-            p(0, str(soldier) + ' is in HALF cover.')
+            status(str(soldier) + ' is in FULL cover.')
+        else:
+            status(str(soldier) + ' is in HALF cover.')
         actions = []
         if len(room[roomNo]) == 0:
             actions.append(advance_action)
@@ -1357,7 +1458,7 @@ def playerTurn():
     #ends turn by default
 
 
-def displayShop(ap):
+def displayShop(soldier, ap):
     global fragments
     global elerium
     global meld
@@ -1366,281 +1467,176 @@ def displayShop(ap):
     options = []
     print("Time: "+str(ap))
     options.append("Advance")
-    p(len(options),"Advance")
+    print(len(options) + "Advance")
     if ap == 60:
         if meld >= 15:
             if not "Aim" in soldier.mods:
                 options.append("AimBonus")
-                p(len(options),"(60 Time) (15m) Insta-Genemod: Depth Perception (+5 aim)")
+                print(len(options) + "(60 Time) (15m) Insta-Genemod: Depth"
+                                     "Perception (+5 aim)")
             if not "AP" in soldier.mods:
                 options.append("APBonus")
-                p(len(options),"(60 Time) (15m) Micro-Augment: Reflex Servomotors (+2 AP)")
+                print(len(options) + "(60 Time) (15m) Micro-Augment: Reflex"
+                                     "Servomotors (+2 AP)")
             options.append("")
         if meld >= 20:
             if not "HP" in soldier.mods:
                 options.append("HPBonus")
-                p(len(options),"(60 Time) (20m) Insta-Genemod: Muscle Regeneration (+5 HP)")
+                print(len(options) + "(60 Time) (20m) Insta-Genemod:"
+                                     "Muscle Regeneration (+5 HP)")
             if not "Nade" in soldier.mods:
                 options.append("NadeBonus")
-                p(len(options),"(60 Time) (20m) Micro-Augment: Grenade Launcher (+2 Frag Grenades)")
+                print(len(options) + "(60 Time) (20m) Micro-Augment: Grenade"
+                                     "Launcher (+2 Frag Grenades)")
     if ap >= 50:
-        if not type(soldier.weapon) is LaserRifle() and elerium >= 20 and fragments >= 40:
+        if not type(soldier.weapon) is LaserRifle() and elerium >= 20         \
+           and fragments >= 40:
             options.append("LaserRifle")
-            p(len(options),"(40 Time) (20e) (40f) Get Laser Rifle")
+            print(len(options) + "(40 Time) (20e) (40f) Get Laser Rifle")
             print("     (~4dmg), infinite ammo")
-        if not type(soldier.weapon) is LaserCarbine() and elerium >= 10 and fragments >= 30:
+        if not type(soldier.weapon) is LaserCarbine() and elerium >= 10       \
+           and fragments >= 30:
             options.append("LaserCarbine")
-            p(len(options),"(40 Time) (10e) (30f) Get Laser Carbine")
+            print(len(options) + "(40 Time) (10e) (30f) Get Laser Carbine")
             print("     (~3dmg), infinite ammo, +10% aim")
     if ap >= 30:
         if meld >= 10 and fragments >= 10:
             options.append("Meds")
-            p(len(options),"(30 Time) (10m) (10f) Get Nano Serum")
+            print(len(options) + "(30 Time) (10m) (10f) Get Nano Serum")
         if alloy >= 4 and fragments >= 20:
             options.append("Frag")
-            p(len(options),"(30 Time) (20f) (4a) Get Frag Grenade")
+            print(len(options) + "(30 Time) (20f) (4a) Get Frag Grenade")
     if ap >= 20:
         if meld >= 5:
             options.append("Heal")
-            p(len(options),"(20 Time) (5m) Recuperate (+1 HP)")
+            print(len(options) + "(20 Time) (5m) Recuperate (+1 HP)")
         options.append("Reload")
-        p(len(options),"(20 Time) Reload Weapon")
+        print(len(options) + "(20 Time) Reload Weapon")
     options.append("Skip")
-    p(len(options),"("+str(ap)+" Time) Advance (Skip this Drop Zone)")
+    print(len(options) + "("+str(ap)+" Time) Advance (Skip this Drop Zone)")
     selection = get_int_input('> ', 1, len(options) - 1)
     print('selected option ' + str(selection))
     return options[selection - 1]
 
 
-def check_for_alien_overwatch():
+def check_for_alien_overwatch(soldier):
     for i in range(len(room[roomNo])):
         alium = room[roomNo][i]
         alium.overwatch(soldier)
 
 
-def fire(alium,cthplayer):
-    if alium.alive == True:
-        if cthplayer > 0:
-            p(0, str(alium) + ' fires at ' + str(soldier) + ' (' + str(cthplayer) + '%)'+'('+alium.weapon.name+")")
-            alium.shoot_at(soldier)
+def fire(alien, soldier):
+    hit_chance = alien.aim_at(soldier)
+    if hit_chance > 0:
+        status(str(alien) + ' fires at ' + str(soldier) + ' ('            \
+               + str(hit_chance) + '%)' + '('                  \
+               + alien.weapon.name + ')')
+        alien.shoot_at(soldier)
+    else:
+        if rd.randrange(0,100) < 80:
+            ow(alien)
         else:
-            if rd.randrange(0,100) < 80:
-                ow(alium)
-            else:
-                if ITEM_ALIEN_GRENADE in alium.items:
-                    nade(alium)
+            if ITEM_ALIEN_GRENADE in alien.items:
+                nade(alien, soldier)
 
 
-def nade(alium):
-    if ITEM_ALIEN_GRENADE not in alium.items:
+def nade(alien, soldier):
+    if ITEM_ALIEN_GRENADE not in alien.items:
         raise Exception('No grenade in inventory')
-    if alium.alive == True:
-        p(0, str(alium) + ' uses Alien Grenade!')
+    if alien.alive == True:
+        status(str(alien) + ' uses Alien Grenade!')
         s(.5)
-        p(0, '**BLAM!**')
+        print('**BLAM!**')
         s(.5)
-        del alium.items[alium.items.index(ITEM_ALIEN_GRENADE)]
+        del alien.items[alien.items.index(ITEM_ALIEN_GRENADE)]
         #sets the aliens item to 'none', no more grenades for you
-        p(0, '3 damage!')
+        status('3 damage!')
         soldier.cover = 20
         soldier.hp -= 3
-        checkPlayerDead()
+        soldier.check_death()
 
 
-def ow(alium):
-    if alium.alive == True:
-
-        p(0, str(alium) + ' went on overwatch!')
-        alium.on_overwatch = True
+def ow(alien):
+    status(str(alien) + ' went on overwatch!')
+    alien.on_overwatch = True
 
 
-def move(alium,cover):
-    if alium.alive == True:
+def move(alien, cover, soldier):
+    if alien.alive == True:
         s(.5)
         if cover == 40:
-            p(0, str(alium) + ' runs to Full cover!') #if an alien has no cover, it will run to full cover. same goes if it's flanked
+            # if an alien has no cover, it will run to full cover.
+            # same goes if it's flanked
+            status(str(alien) + ' runs to Full cover!')
         elif cover == 20:
-            p(0, str(alium) + ' runs to Half cover!')
+            status(str(alien) + ' runs to Half cover!')
         s(.5)
-        soldier.overwatch(alium)
-        alium.on_overwatch = False
-        alium.cover = cover
+        soldier.overwatch(alien)
+        alien.on_overwatch = False
+        alien.cover = cover
 
 
 def alienTurn(soldier):
     for i in range(len(room[roomNo])):
-        try:
-            alium = room[roomNo][i]
-        except ( Exception ):
-            i = 0
+        alien = None
+        # try:
+        alien = room[roomNo][i]
+        # this shouldn't happen
+        # except ( Exception ):
+        #     i = 0
         #because something may have happened that causes an index error
-        if alium.alive == True and soldier.alive == True:
-            cthplayer = (alium.aim - soldier.cover) - soldier.hunkerbonus
-            if ITEM_SCOPE in alium.items:
-                cthplayer += 20
-
-            if alium.cover < 20:
+        if alien.alive == True and soldier.alive == True:
+            cthplayer = alien.aim_at(soldier)
+            if alien.cover < 20:
                 if rd.randrange(0,100) < 80:
-                    move(alium,40)
-                elif rd.randrange(0,100) < 40:
-                    fire(alium,cthplayer)
+                    move(alien, 40, soldier)
+                elif rd.randrange(0, 100) < 40:
+                    fire(alien, soldier)
                 else:
-                    move(alium,20)
-            elif alium.cover < 40:
+                    move(alien, 20, soldier)
+            elif alien.cover < 40:
                 if cthplayer > 50 + rd.randrange(0,20):
-                    fire(alium,cthplayer)
+                    fire(alien, soldier)
                 elif rd.randrange(0,100) < 20:
-                    if ITEM_ALIEN_GRENADE in alium.items:
-                        nade(alium)
+                    if ITEM_ALIEN_GRENADE in alien.items:
+                        nade(alien, soldier)
                     else:
-                        fire(alium,cthplayer)
-                elif rd.randrange(0,100) < 20:
-                    if rd.randrange(0,100) < 50:
-                        move(alium,40)
-                    else:
-                        move(alium,20)
+                        fire(alien, soldier)
+                elif rd.randrange(0, 100) < 20:
                     #randomly moves to different cover sometimes
-
-                else:
-                    if rd.randrange(0,100) < 20:
-                        ow(alium)
+                    if rd.randrange(0, 100) < 50:
+                        move(alien, 40, soldier)
                     else:
-                        fire(alium,cthplayer)
-
+                        move(alien, 20, soldier)
+                else:
+                    if rd.randrange(0, 100) < 20:
+                        ow(alien)
+                    else:
+                        fire(alien, soldier)
             else:
                 if cthplayer > 30 + rd.randrange(0,20):
-                    fire(alium,cthplayer)
+                    fire(alien, soldier)
                 elif rd.randrange(0,100) < 80:
-                    move(alium,20)
+                    move(alien, 20, soldier)
                 else:
-                    ow(alium)
+                    ow(alien)
         s(.5)
 
 
-#levels up
-def checkXP():
-    was_promoted = False
-    if soldier.xp >= 25 and soldier.nrank < RANK_SQUADDIE:
-        soldier.nrank = RANK_SQUADDIE
-        soldier.hp += 1
-        soldier.aim += 2
-        soldier.mobility += 1
-        drop()
-        drop()
-        was_promoted = True
-    elif soldier.xp >= 100 and soldier.nrank < RANK_CORPORAL:
-        soldier.nrank = RANK_CORPORAL
-        soldier.hp += 1
-        soldier.aim += 2
-        soldier.mobility += 1
-        drop()
-        drop()
-        was_promoted = True
-    elif soldier.xp >= 300 and soldier.nrank < RANK_SERGEANT:
-        nicknames = XCOM_UNISEX_NICKNAMES_ASSAULT                             \
-                    + XCOM_UNISEX_NICKNAMES_HEAVY                             \
-                    + XCOM_UNISEX_NICKNAMES_SNIPER                            \
-                    + XCOM_UNISEX_NICKNAMES_SUPPORT
-        if soldier.sex == SEX_FEMALE:
-            nicknames += XCOM_FEMALE_NICKNAMES_ASSAULT                        \
-                         + XCOM_FEMALE_NICKNAMES_HEAVY                        \
-                         + XCOM_FEMALE_NICKNAMES_MEC                          \
-                         + XCOM_FEMALE_NICKNAMES_SNIPER                       \
-                         + XCOM_FEMALE_NICKNAMES_SUPPORT
-        else:
-            nicknames += XCOM_MALE_NICKNAMES_ASSAULT                          \
-                         + XCOM_MALE_NICKNAMES_HEAVY                          \
-                         + XCOM_MALE_NICKNAMES_MEC                            \
-                         + XCOM_MALE_NICKNAMES_SNIPER                         \
-                         + XCOM_MALE_NICKNAMES_SUPPORT
-        soldier.nickname = rd.choice(nicknames)
-        p(0, XCOM_RANKS[soldier.nrank] + ' ' + soldier.firstname + ' '        \
-          + soldier.lastname  + " earned the nickname '" + soldier.nickname   \
-          + "'")
-        soldier.nrank = RANK_SERGEANT
-        soldier.hp += 2
-        soldier.aim += 1
-        soldier.mobility += 1
-        drop()
-        drop()
-        was_promoted = True
-    elif soldier.xp >= 900 and soldier.nrank < RANK_LIEUTENANT:
-        soldier.nrank = RANK_LIEUTENANT
-        soldier.hp += 1
-        soldier.aim += 1
-        drop()
-        drop()
-        was_promoted = True
-    elif soldier.xp >= 1500 and soldier.nrank < RANK_CAPTAIN:
-        soldier.nrank = RANK_CAPTAIN
-        soldier.hp += 2
-        soldier.aim += 1
-        drop()
-        drop()
-        drop()
-        drop()
-        was_promoted = True
-    elif soldier.xp >= 2000 and soldier.nrank < RANK_MAJOR:
-        soldier.nrank = RANK_MAJOR
-        soldier.hp += 1
-        soldier.aim += 1
-        soldier.mobility += 1
-        drop()
-        drop()
-        drop()
-        was_promoted = True
-    elif soldier.xp >= 3000 and soldier.nrank < RANK_COLONEL:
-        soldier.nrank = RANK_COLONEL
-        soldier.hp += 1
-        soldier.aim += 1
-        drop()
-        drop()
-        drop()
-        drop()
-        drop()
-        drop()
-        was_promoted = True
-    if was_promoted:
-        p(0, str(soldier) + ' was promoted to ' + XCOM_RANKS[soldier.nrank])
-
-
-#gets some sweet sweet loot from those aliens
-def getLoot(alium):
-    fragments = 0
-    elerium = 0
-    meld = 0
-    alloy = 0
-    soldier.xp += alium.nrank * abs(alium.hp)
-    fragments += abs(alium.hp)
-    elerium += alium.nrank
-    meld += 2 * alium.nrank
-    if ITEM_ALIEN_GRENADE in alium.items:
-        elerium += 2
-    elif ITEM_ALLOY_PLATING in alium.items:
-        alloy += 2
-    elif ITEM_SCOPE in alium.items:
-        fragments += 2
-    e, f = alium.weapon.get_materials()
-    elerium += e
-    fragments += f
-    return [fragments, elerium, meld, alloy]
-
-
-def drop():
+def drop(soldier):
     itemdrop = rd.randrange(0,5)
     if rd.randrange(1,100) <= 5:
-        p(spk,"Recovered a "+drops[itemdrop]+"!")
+        status('Recovered a ' + drops[itemdrop] + '!')
         if itemdrop == 0:
             soldier.items.append(ITEM_FRAG_GRENADE)
         elif itemdrop == 1:
             soldier.items.append(ITEM_MEDKIT)
-        elif itemdrop == 5:
-            soldier.items.append(ITEM_ALIEN_GRENADE)
         elif itemdrop == 3:
             soldier.weapon = PlasmaCarbine()
         elif itemdrop == 4:
             soldier.weapon = PlasmaRifle()
-
+        elif itemdrop == 5:
+            soldier.items.append(ITEM_ALIEN_GRENADE)
 
 
 def create_map(scripted_levels):
@@ -1687,78 +1683,93 @@ def dump_map(the_map):
             print('{}'.format(pod))
 
 
-# def main():
-p("Bradford", "Welcome Commander. We've discovered an Alien Base, and it's your job to send someone out to deal with it.")
-p("Bradford", "Choose a soldier from the 3 below to go on the mission.")
+def status(message):
+    '''
+    Wrapper function to format the status message.
 
-barracks = []
-#generates soldiers
-for i in range(3):
-    x = create_soldier(i)
-    barracks.append(x)
+    Currently, no formatting is done
+    '''
+    print(message)
 
-#displays a list of the soldiers
-for i in range(len(barracks)):
-    p(0,str(i+1)+": ")
-    barracks[i].print_summary()
-    p(0,"")
 
-#forces you to pick only one soldier
-soldier = barracks[get_int_input('# ', 1, 3) - 1]
+def main():
+    global room
+    global roomNo
 
-spk = soldier.firstname + " " + soldier.lastname
-if soldier.lastname == "Bradford":
-    p(spk, "What? There must have been a mistake on the sheet, Commander! You can't send --")
-elif soldier.lastname == VAN_DOORN:
-    p(spk, "I'm the Ops team?")
-else:
-    p(spk, "Ready for duty, Commander!")
+    print("Bradford: Welcome Commander. We've discovered an Alien Base, and"
+          "it's your job to send someone out to deal with it.")
+    print('Bradford: Choose a soldier from the 3 below to go on the mission.')
 
-scripted_levels = {
-    1:  [create_alien(1, 1, 'Sectoid', nrank=0)],
-    2:  [
-            create_alien(1, 2, 'Sectoid', nrank=0),
-            create_alien(1, 2, 'Sectoid', nrank=0)
-        ],
-    3:  [
-            create_alien(1, 3, 'Sectoid', nrank=0),
-            create_alien(1, 3, 'Sectoid', nrank=1)
-        ],
-    5:  ["Drop Zone"],
-    10: ["Drop Zone"],
-    15: ["Drop Zone"],
-    20: ["Drop Zone"],
-    30: [create_alien(1, 1, 'Muton', nrank=8, hp=50)]
-}
+    barracks = []
+    #generates soldiers
+    for i in range(3):
+        x = create_soldier(i)
+        barracks.append(x)
 
-room = create_map(scripted_levels)
-# dump_map(room)
-roomNo = 0
+    #displays a list of the soldiers
+    for i in range(len(barracks)):
+        print(str(i + 1) + ': ')
+        barracks[i].print_summary()
+        print()
 
-#game loop, runs until your soldier is killed
-while soldier.alive == True:
-    try:
-        old_room = roomNo
-        playerTurn()
-        soldier.items.append(ITEM_ALIEN_GRENADE)
-        p(0, str(soldier) + ' is out of AP!')
+    #forces you to pick only one soldier
+    soldier = barracks[get_int_input('# ', 1, 3) - 1]
 
-        # Aliens are not allowed to act after the room was changed,
-        # because they already scattered when the player entered the new
-        # room.  Also, there is no need for an alien turn if there are
-        # no more aliens in the room.
-        if soldier.alive == True and old_room == roomNo                       \
-           and len(room[roomNo]) > 0:
-            print()
-            print("--------------Alien Activity!--------------")
-            print()
-            s(1)
-            alienTurn(soldier)
-            print()
-            print("--------------XCOM Turn--------------")
-            print()
-    except ( ValueError or IndexError ):
-        pass
-    if roomNo == NUMBER_OF_ROOMS:
-        print("You have won the game!")
-        break
+    if soldier.lastname == "Bradford":
+        soldier.say("What? There must have been a mistake on the sheet, Commander! You can't send --")
+    elif soldier.lastname == VAN_DOORN:
+        soldier.say("I'm the Ops team?")
+    else:
+        soldier.say('Ready for duty, Commander!')
+
+    scripted_levels = {
+        1:  [create_alien(1, 1, 'Sectoid', nrank=0)],
+        2:  [
+                create_alien(1, 2, 'Sectoid', nrank=0),
+                create_alien(1, 2, 'Sectoid', nrank=0)
+            ],
+        3:  [
+                create_alien(1, 3, 'Sectoid', nrank=0),
+                create_alien(1, 3, 'Sectoid', nrank=1)
+            ],
+        5:  ["Drop Zone"],
+        10: ["Drop Zone"],
+        15: ["Drop Zone"],
+        20: ["Drop Zone"],
+        30: [create_alien(1, 1, 'Muton', nrank=8, hp=50)]
+    }
+
+    room = create_map(scripted_levels)
+    # dump_map(room)
+    roomNo = 0
+
+    #game loop, runs until your soldier is killed
+    while soldier.alive == True:
+        try:
+            old_room = roomNo
+            playerTurn(soldier)
+            status(str(soldier) + ' is out of AP!')
+
+            # Aliens are not allowed to act after the room was changed,
+            # because they already scattered when the player entered the new
+            # room.  Also, there is no need for an alien turn if there are
+            # no more aliens in the room.
+            if soldier.alive == True and old_room == roomNo                       \
+               and len(room[roomNo]) > 0:
+                print()
+                print("--------------Alien Activity!--------------")
+                print()
+                s(1)
+                alienTurn(soldier)
+                print()
+                print("--------------XCOM Turn--------------")
+                print()
+        except ( ValueError or IndexError ):
+            pass
+        if roomNo == NUMBER_OF_ROOMS:
+            print("You have won the game!")
+            break
+
+
+if __name__ == '__main__':
+    main()
