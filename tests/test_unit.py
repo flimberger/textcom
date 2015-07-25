@@ -88,20 +88,31 @@ def test_death():
 
     # low hp is not death
     a.hp = 1
+    a.alive = True
     assert not a.check_death()
     assert not death_handler_called
-    death_handler_called = False
+    assert a.alive
 
     # 0 hp is death
+    death_handler_called = False
     a.hp = 0
     assert a.check_death()
     assert death_handler_called
-    death_handler_called = False
+    assert not a.alive
 
     # negative hp is death
+    death_handler_called = False
     a.hp = -1
+    a.alive = True
     assert a.check_death()
     assert death_handler_called
+    assert not a.alive
+
+    # check that the death handler is only called once
+    death_handler_called = False
+    assert a.check_death()
+    assert not death_handler_called
+    assert not a.alive
 
 
 def test_overwatch():

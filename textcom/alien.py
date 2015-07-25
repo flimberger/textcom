@@ -105,7 +105,6 @@ class Alien(Unit):
 
     def _handle_death(self):
         status(str(self) + ' died!')
-        self.alive = False
 
     def refresh(self):
         self.hp += self.nrank * round(random.random() * 2)

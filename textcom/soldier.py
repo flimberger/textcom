@@ -468,7 +468,6 @@ class Soldier(Unit):
         return XCOM_RANKS[self.nrank] + middle + self.lastname
 
     def _handle_death(self):
-        self.alive = False
         status(str(self) + ' was killed!')
         if not self.lastname == "Bradford":
             print('Bradford: Commander, our unit was killed.')

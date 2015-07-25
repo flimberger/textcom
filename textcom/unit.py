@@ -78,14 +78,20 @@ class Unit:
         return hit_chance
 
     def check_death(self):
-        """Check for unit death and call death handler, if unit is dead.
+        """Check for unit death and call death handler, if unit died.
 
-        If the unit is not dead, `False` is returned and nothing
-        happens, else the `_handle_death` method implemented by the
-        subclass is called.
+        If the `hp` attribute has a value of 0 or lower, the `alive`
+        attribute is checked if the death was already handled.  If it is
+        `False`, the attribute is set to `True` and the `_handle_death`
+        method implemented by the subclass is called.  Finally `True` is
+        returned.
+
+        If the unit is alive, `False` is returned.
         """
         if self.hp <= 0:
-            self._handle_death()
+            if self.alive:
+                self.alive = False
+                self._handle_death()
             return True
         return False
 
