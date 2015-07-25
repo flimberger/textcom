@@ -71,9 +71,9 @@ class Unit:
            or type(self.weapon) is LaserCarbine                               \
            or type(self.weapon) is PlasmaCarbine:
             hit_chance += 10
-        if hit_chance < 0:
+        if hit_chance < 5:
             hit_chance = 5
-        if hit_chance > 100:
+        if hit_chance > 95:
             hit_chance = 95
         return hit_chance
 
@@ -123,6 +123,5 @@ class Unit:
             if target.check_death():
                 self._handle_kill(target)
             return True
-        else:
-            status(' Missed!')
+        status(' Missed!')
         return False
