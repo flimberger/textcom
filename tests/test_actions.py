@@ -20,27 +20,30 @@
 # SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 from textcom import COVER_FULL, COVER_HALF
-from textcom.alien import create_alien
-from textcom.soldier import Soldier
 from textcom.actions import Action,                                    \
                             EndTurnAction,                             \
                             HunkerDownAction,                          \
                             OverwatchAction,                           \
                             ReloadAction
+from textcom.alien import create_alien
+from textcom.map import create_map
+from textcom.soldier import Soldier
 from textcom.weapons import BallisticPistol
 
 
-def setup_soldier():
+def setup_map():
     soldier = Soldier(0, 'f', 5, 70, 10, 0, 'Jane', 'Doe', '', None, [], [])
     soldier.ap = soldier.mobility
-    return soldier
+    test_map = create_map(1, soldier)
+    return test_map
 
 
 def test_calc_ap():
     aps = 10
     apd = 10
-    s = setup_soldier()
-    a = Action(s, 'Test Action', aps, False)
+    m = setup_map()
+    s = m.soldier
+    a = Action(m, 'Test Action', aps, False)
 
     # check if aps are correctly subtracted
     s.ap = aps + apd
@@ -67,17 +70,19 @@ def test_calc_ap():
 
 
 def test_end_turn_action():
-    s = setup_soldier()
+    m = setup_map()
+    s = m.soldier
     s.ap = s.mobility
-    a = EndTurnAction(s)
+    a = EndTurnAction(m)
     a.perform()
     # the End Turn action only sets the soldiers ap to 0
     assert s.ap == 0
 
 
 def test_hunker_down_action():
-    s = setup_soldier()
-    a = HunkerDownAction(s)
+    m = setup_map()
+    s = m.soldier
+    a = HunkerDownAction(m)
 
     # default soldier has no cover, so hunkering does nothing
     a.perform()
@@ -96,8 +101,9 @@ def test_hunker_down_action():
 
 
 def test_overwatch_action():
-    s = setup_soldier()
-    a = OverwatchAction(s)
+    m = setup_map()
+    s = m.soldier
+    a = OverwatchAction(m)
     a.perform()
     assert s.on_overwatch == True
     # hunkering ends the turn, so there must no aps be left
@@ -105,9 +111,10 @@ def test_overwatch_action():
 
 
 def test_reload_action():
-    s = setup_soldier()
+    m = setup_map()
+    s = m.soldier
     s.weapon = BallisticPistol()
     s.weapon.ammo = 0
-    a = ReloadAction(s)
+    a = ReloadAction(m)
     a.perform()
     assert s.weapon.ammo == s.weapon.clip_size

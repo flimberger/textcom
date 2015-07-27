@@ -469,6 +469,11 @@ class Soldier(Unit):
 
     def _handle_death(self):
         status(str(self) + ' was killed!')
+        # The game_map attribute should be set directly after the map is
+        # generated.  I know this is ugly and fragile, but I currently have no
+        # better idea.  Please forgive me.
+        score = textcom.fragments + textcom.elerium + textcom.meld            \
+                + textcom.alloy + self.xp + game_map.current_room
         if not self.lastname == "Bradford":
             print('Bradford: Commander, our unit was killed.')
             print('Bradford: We were able to recover some materials, however.')
@@ -476,9 +481,7 @@ class Soldier(Unit):
             print("Elerium:", textcom.elerium)
             print("Meld:", textcom.meld)
             print("Alloy:", textcom.alloy)
-            print('Total Score: ' + str(textcom.fragments + textcom.elerium   \
-                                        + textcom.meld + textcom.alloy        \
-                                        + self.xp + textcom.roomNo))
+            print('Total Score: ' + str(score))
         else:
             print("Council Speaker: Commander...you 'volunteered' your Central"
                  'Officer to fight on the front lines.')
@@ -524,7 +527,7 @@ class Soldier(Unit):
             self.aim += 2
             self.mobility += 1
             for _ in range(2):
-                drop(self)
+                self.game_map.drop(self)
             was_promoted = True
         elif self.xp >= 100 and self.nrank < RANK_CORPORAL:
             self.nrank = RANK_CORPORAL
@@ -532,7 +535,7 @@ class Soldier(Unit):
             self.aim += 2
             self.mobility += 1
             for _ in range(2):
-                drop(self)
+                self.game_map.drop(self)
             was_promoted = True
         elif self.xp >= 300 and self.nrank < RANK_SERGEANT:
             nicknames = XCOM_UNISEX_NICKNAMES_ASSAULT                         \
@@ -560,21 +563,21 @@ class Soldier(Unit):
             self.aim += 1
             self.mobility += 1
             for _ in range(2):
-                drop(self)
+                self.game_map.drop(self)
             was_promoted = True
         elif self.xp >= 900 and self.nrank < RANK_LIEUTENANT:
             self.nrank = RANK_LIEUTENANT
             self.hp += 1
             self.aim += 1
             for _ in range(2):
-                drop(self)
+                self.game_map.drop(self)
             was_promoted = True
         elif self.xp >= 1500 and self.nrank < RANK_CAPTAIN:
             self.nrank = RANK_CAPTAIN
             self.hp += 2
             self.aim += 1
             for _ in range(4):
-                drop(self)
+                self.game_map.drop(self)
             was_promoted = True
         elif self.xp >= 2000 and self.nrank < RANK_MAJOR:
             self.nrank = RANK_MAJOR
@@ -582,14 +585,14 @@ class Soldier(Unit):
             self.aim += 1
             self.mobility += 1
             for _ in range(4):
-                drop(self)
+                self.game_map.drop(self)
             was_promoted = True
         elif self.xp >= 3000 and self.nrank < RANK_COLONEL:
             self.nrank = RANK_COLONEL
             self.hp += 1
             self.aim += 1
             for _ in range(6):
-                drop(self)
+                self.game_map.drop(self)
             was_promoted = True
         if was_promoted:
             status(str(self) + ' was promoted to ' + XCOM_RANKS[self.nrank])

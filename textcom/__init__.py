@@ -3,16 +3,11 @@
 # global map management
 # to be removed
 def globals_hack_init():
-    global room
-    global roomNo
     global fragments
     global elerium
     global meld
     global alloy
 
-    # Map
-    room = [[]]
-    roomNo = -0
     # Global stat counters
     fragments = 0
     elerium = 0

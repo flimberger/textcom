@@ -37,6 +37,7 @@ from textcom.actions import AdvanceAction,                                    \
                             RepositionAction,                                 \
                             UseItemAction
 from textcom.alien import create_alien
+from textcom.map import create_map
 from textcom.soldier import create_soldier
 from textcom.ui import get_int_input, status
 
@@ -64,18 +65,20 @@ def prompt_player(actions):
 
 
 #ah, the player's turn.
-def playerTurn(soldier):
+def playerTurn(game_map):
+    soldier = game_map.soldier
+    pod = game_map.get_current_room()
     soldier.ap = soldier.mobility
     soldier.on_overwatch = False
     soldier.hunkerbonus = 0
 
     # currently redundant and inefficient
-    advance_action = AdvanceAction(soldier)
-    end_turn_action = EndTurnAction(soldier)
-    hunker_down_action = HunkerDownAction(soldier)
-    overwatch_action = OverwatchAction(soldier)
-    reload_action = ReloadAction(soldier)
-    reposition_action = RepositionAction(soldier)
+    advance_action = AdvanceAction(game_map)
+    end_turn_action = EndTurnAction(game_map)
+    hunker_down_action = HunkerDownAction(game_map)
+    overwatch_action = OverwatchAction(game_map)
+    reload_action = ReloadAction(game_map)
+    reposition_action = RepositionAction(game_map)
 
     #maybe just have these as def's instead of classes?
 
@@ -88,7 +91,7 @@ def playerTurn(soldier):
         else:
             status(str(soldier) + ' is in HALF cover.')
         actions = []
-        if len(textcom.room[textcom.roomNo]) == 0:
+        if len(pod) == 0:
             actions.append(advance_action)
             if soldier.ap >= reload_action.ap_costs:
                 actions.append(reload_action)
@@ -96,9 +99,8 @@ def playerTurn(soldier):
         else:
             if soldier.weapon.ammo > 0:
                 if soldier.ap >= 6: # TODO make the ap_cost a static member
-                    for i in range(len(textcom.room[textcom.roomNo])):
-                        alien = textcom.room[textcom.roomNo][i]
-                        actions.append(FireAction(soldier, alien))
+                    for alien in pod:
+                        actions.append(FireAction(game_map, alien))
                 if soldier.ap >= overwatch_action.ap_costs:
                     actions.append(overwatch_action)
             if soldier.weapon.ammo < soldier.weapon.clip_size                 \
@@ -106,7 +108,7 @@ def playerTurn(soldier):
                 actions.append(reload_action)
             for item in soldier.items:
                 if item.use_ap_costs > 0 and soldier.ap >= item.use_ap_costs:
-                    actions.append(UseItemAction(soldier, item))
+                    actions.append(UseItemAction(game_map, item))
             if soldier.ap >= reposition_action.ap_costs:
                 actions.append(reposition_action)
             if soldier.cover > COVER_NONE                                     \
@@ -114,7 +116,6 @@ def playerTurn(soldier):
                     actions.append(hunker_down_action)
             actions.append(end_turn_action)
         prompt_player(actions).perform()
-    #ends turn by default
 
 
 def displayShop(soldier, ap):
@@ -224,11 +225,12 @@ def move(alien, cover, soldier):
         alien.cover = cover
 
 
-def alienTurn(soldier):
-    for i in range(len(textcom.room[textcom.roomNo])):
-        alien = textcom.room[textcom.roomNo][i]
+def alienTurn(game_map):
+    pod = game_map.get_current_room()
+    soldier = game_map.soldier
+    for alien in pod:
         if not alien.alive:
-            textcom.room[textcom.roomNo].pop(textcom.room[textcom.roomNo].index(alien))
+            del pod[pod.index(alien)]
             continue
         if soldier.alive:
             cthplayer = alien.aim_at(soldier)
@@ -268,59 +270,6 @@ def alienTurn(soldier):
         time.sleep(0.5)
 
 
-def drop(soldier):
-    itemdrop = random.randrange(0,5)
-    if random.randrange(1,100) <= 5:
-        status('Recovered a ' + drops[itemdrop] + '!')
-        if itemdrop == 0:
-            soldier.items.append(ITEM_FRAG_GRENADE)
-        elif itemdrop == 1:
-            soldier.items.append(ITEM_MEDKIT)
-        elif itemdrop == 3:
-            soldier.weapon = PlasmaCarbine()
-        elif itemdrop == 4:
-            soldier.weapon = PlasmaRifle()
-        elif itemdrop == 5:
-            soldier.items.append(ITEM_ALIEN_GRENADE)
-
-
-def create_map(scripted_levels):
-    # the first room is empty, since the player starts there
-    options = ['Sectoid', 'Thinman', 'Floater', 'Muton']
-    the_map = [[]]
-    for i in range(1, NUMBER_OF_ROOMS):
-        if i in scripted_levels:
-            the_map.append(scripted_levels[i])
-        else:
-            pod = []
-            # more aliens per room the further along you are
-            for j in range(3 + random.randrange(-2, 2 + round(i / 10))):
-                # determine alien species
-                species = options[0]
-                nrank = 0
-                if 3 < i and i < 10:
-                    species = random.choice(options[:2])
-                elif 10 <= i and i < 20:
-                    species = random.choice(options)
-                else:
-                    species = random.choice(options[2:])
-                # determine rank
-                # if species == 'Sectoid':
-                maxrank = 4
-                if species == 'Thinman':
-                    maxrank = 5
-                elif species == 'Floater':
-                    maxrank = 6
-                elif species == 'Muton':
-                    maxrank = 8
-                nrank = random.randrange(round(i / (NUMBER_OF_ROOMS           \
-                                                / (maxrank - 1))), maxrank)
-                alien = create_alien(j, i, species, nrank=nrank)
-                pod.append(alien)
-            the_map.append(pod)
-    return the_map
-
-
 def dump_map(the_map):
     for index, location in enumerate(the_map):
         print('#{}:'.format(index))
@@ -331,7 +280,7 @@ def dump_map(the_map):
 def main():
     textcom.globals_hack_init()
 
-    print("Bradford: Welcome Commander. We've discovered an Alien Base, and"
+    print("Bradford: Welcome Commander. We've discovered an Alien Base, and "
           "it's your job to send someone out to deal with it.")
     print('Bradford: Choose a soldier from the 3 below to go on the mission.')
 
@@ -351,7 +300,8 @@ def main():
     soldier = barracks[get_int_input('# ', 1, 3) - 1]
 
     if soldier.lastname == "Bradford":
-        soldier.say("What? There must have been a mistake on the sheet, Commander! You can't send --")
+        soldier.say("What? There must have been a mistake on the sheet, "
+                    "Commander! You can't send --")
     elif soldier.lastname == "Van Doorn":
         soldier.say("I'm the Ops team?")
     else:
@@ -374,34 +324,40 @@ def main():
         30: [create_alien(1, 1, 'Muton', nrank=8, hp=50)]
     }
 
-    textcom.room = create_map(scripted_levels)
-    # dump_map(room)
-    textcom.roomNo = 0
+    game_map = create_map(NUMBER_OF_ROOMS, soldier, scripted_levels)
+    # dump_map(game_map)
+
+    # Yeah, I feel pretty bad about this, but currently I have no idea how to
+    # make the current room index available for the death handler score
+    # .calculation.  Maybe everything works out fine if components are
+    # introduced.  I hope so.
+    soldier.game_map = game_map
 
     #game loop, runs until your soldier is killed
     while soldier.alive == True:
         try:
-            old_room = textcom.roomNo
-            playerTurn(soldier)
+            old_room = game_map.get_current_room()
+            playerTurn(game_map)
             status(str(soldier) + ' is out of AP!')
 
+            current_room = game_map.get_current_room()
             # Aliens are not allowed to act after the room was changed,
             # because they already scattered when the player entered the new
             # room.  Also, there is no need for an alien turn if there are
             # no more aliens in the room.
-            if soldier.alive == True and old_room == textcom.roomNo                       \
-               and len(textcom.room[textcom.roomNo]) > 0:
+            if soldier.alive == True and old_room == current_room             \
+               and len(current_room) > 0:
                 print()
                 print("--------------Alien Activity!--------------")
                 print()
                 time.sleep(1)
-                alienTurn(soldier)
+                alienTurn(game_map)
                 print()
                 print("--------------XCOM Turn--------------")
                 print()
         except ( ValueError or IndexError ):
             pass
-        if textcom.roomNo == NUMBER_OF_ROOMS:
+        if game_map.current_room == len(game_map.rooms):
             print("You have won the game!")
             break
 

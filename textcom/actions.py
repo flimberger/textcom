@@ -25,15 +25,14 @@ import random
 
 import textcom
 from textcom import COVER_FLANKED, COVER_FULL, COVER_HALF
-from textcom.map import check_for_alien_overwatch, checkspot, scatter
 from textcom.soldier import BRADFORD
 
 
 class Action:
     '''Base class for actions'''
 
-    def __init__(self, soldier, name, ap_costs, ends_turn):
-        self.soldier = soldier
+    def __init__(self, game_map, name, ap_costs, ends_turn):
+        self.game_map = game_map
         self.name = name
         self.ap_costs = ap_costs
         self.ends_turn = ends_turn
@@ -47,32 +46,28 @@ class Action:
 
     def _calc_ap(self):
         '''Should be the first thing executed by the perform functions'''
-        if self.soldier.ap < self.ap_costs:
+        soldier = self.game_map.soldier
+        if soldier.ap < self.ap_costs:
             raise Exception("Not enough AP to perform action '{}'".
                             format(self.name))
         if self.ends_turn:
-            self.soldier.ap = 0
+            soldier.ap = 0
         else:
-            self.soldier.ap -= self.ap_costs
+            soldier.ap -= self.ap_costs
 
 
 class AdvanceAction(Action):
-    def __init__(self, soldier):
-        super().__init__(soldier, 'Advance', 1, True)
+    def __init__(self, game_map):
+        super().__init__(game_map, 'Advance', 1, True)
 
     def perform(self):
-        global fragments
-        global elerium
-        global meld
-        global alloy
-
+        soldier = self.game_map.soldier
         self._calc_ap()
-        textcom.roomNo += 1
-        if not "Drop Zone" in textcom.room[textcom.roomNo]:
-            checkspot(textcom.roomNo)
-            scatter(textcom.roomNo)
+        self.game_map.next_room()
+        if not "Drop Zone" in self.game_map.get_current_room():
+            self.game_map.enter_room()
         else:
-            if self.soldier.lastname == BRADFORD:
+            if soldier.lastname == BRADFORD:
                 tactical = 'Tactical Supervisor'
             else:
                 tactical = BRADFORD
@@ -86,7 +81,7 @@ class AdvanceAction(Action):
                 print("Elerium:",elerium)
                 print("Meld:",meld)
                 print("Alloy:",alloy)
-                sel = displayShop(ap, self.soldier)
+                sel = displayShop(ap, soldier)
 
                 if sel == "AimBonus":
                     soldier.mods.append("Aim")
@@ -138,7 +133,7 @@ class AdvanceAction(Action):
                     ap -= 20
                     print("Nano Serum fabricated!")
                 elif sel == "Reload":
-                    soldier.weapon.ammo = soldier.weapon.clip_size
+                    soldier.reload()
                     ap -= 20
                     print("Weapon reloaded!")
                 elif sel == "Heal":
@@ -151,93 +146,95 @@ class AdvanceAction(Action):
             time.sleep(0.5)
             soldier.say("All out of time! I'll have to keep moving!")
             time.sleep(0.5)
-            textcom.roomNo += 1
-            checkspot(textcom.roomNo)
-            scatter(textcom.roomNo)
+            self.game_map.next_room()
+            self.game_map.enter_room()
 
 
 class EndTurnAction(Action):
-    def __init__(self, soldier):
-        super().__init__(soldier, 'End turn', 0, True)
+    def __init__(self, game_map):
+        super().__init__(game_map, 'End turn', 0, True)
 
     def perform(self):
         self._calc_ap()
 
 
 class FireAction(Action):
-    def __init__(self, soldier, target):
-        super().__init__(soldier, 'Fire', 6, False)
+    def __init__(self, game_map, target):
+        super().__init__(game_map, 'Fire', 6, False)
         self.target = target
-        self.hit_chance = soldier.aim_at(target)
+        self.hit_chance = game_map.soldier.aim_at(target)
 
     def __str__(self):
         return '(~{} dmg)(6AP) Fire {} at {} - {} HP - ({}%)'.\
-               format(self.soldier.weapon.damage, self.soldier.weapon.name,   \
+               format(self.game_map.soldier.weapon.damage,                    \
+                      self.game_map.soldier.weapon.name,                      \
                       self.target, self.target.hp, self.hit_chance)
 
     def perform(self):
         self._calc_ap()
-        self.soldier.say(self.soldier.get_retort())
-        self.soldier.shoot_at(self.target)
+        soldier = self.game_map.soldier
+        soldier.say(soldier.get_retort())
+        soldier.shoot_at(self.target)
 
 
 class HunkerDownAction(Action):
-    def __init__(self, soldier):
-        super().__init__(soldier, 'Hunker down', 1, True)
+    def __init__(self, game_map):
+        super().__init__(game_map, 'Hunker down', 1, True)
 
     def perform(self):
         self._calc_ap()
-        if self.soldier.cover == COVER_HALF                                   \
-           or self.soldier.cover == COVER_FULL:
-            self.soldier.hunkerbonus += 20
-        self.soldier.say('Taking cover!')
+        soldier = self.game_map.soldier
+        if soldier.cover == COVER_HALF or soldier.cover == COVER_FULL:
+            soldier.hunkerbonus += 20
+            soldier.say('Taking cover!')
         time.sleep(0.5)
 
 
 class OverwatchAction(Action):
-    def __init__(self, soldier):
-        super().__init__(soldier, 'Overwatch', 6, True)
+    def __init__(self, game_map):
+        super().__init__(game_map, 'Overwatch', 6, True)
 
     def perform(self):
         self._calc_ap()
-        self.soldier.say(self.soldier.get_overwatch_confirmation())
+        soldier = self.game_map.soldier
+        soldier.on_overwatch = True
+        soldier.say(soldier.get_overwatch_confirmation())
         time.sleep(0.5)
-        self.soldier.ap = 0 # TODO check if this is necessary
-        self.soldier.on_overwatch = True
 
 
 class ReloadAction(Action):
-    def __init__(self, soldier):
-        super().__init__(soldier, 'Reload', 8, False)
+    def __init__(self, game_map):
+        super().__init__(game_map, 'Reload', 8, False)
 
     def perform(self):
         self._calc_ap()
-        self.soldier.reload()
+        self.game_map.soldier.reload()
         time.sleep(0.5)
 
 
 class RepositionAction(Action):
-    def __init__(self, soldier):
-        super().__init__(soldier, 'Reposition', 3, False)
+    def __init__(self, game_map):
+        super().__init__(game_map, 'Reposition', 3, False)
 
     def perform(self):
         self._calc_ap()
         # if any aliens are on overwatch, check and be shot at if they are
-        check_for_alien_overwatch(self.soldier)
-        self.soldier.cover = 40 # ?!
-        self.soldier.say(self.soldier.get_reposition_confirmation())
+        self.game_map.check_for_alien_overwatch()
+        soldier = self.game_map.soldier
+        soldier.cover = 40 # ?!
+        soldier.say(soldier.get_reposition_confirmation())
         time.sleep(0.5)
         #chance to flank an alien
         if random.randrange(0, 100) < 50:
-            alien = random.choice(textcom.room[textcom.roomNo])
+            alien = random.choice(self.game_map.get_current_room())
 
             textcom.ui.status(str(alien) + ' is flanked!')
             alien.cover = COVER_FLANKED
 
 
 class UseItemAction(Action):
-    def __init__(self, soldier, item):
-        super().__init__(soldier, 'Use ' + item.name, item.use_ap_costs, False)
+    def __init__(self, game_map, item):
+        super().__init__(game_map, 'Use ' + item.name, item.use_ap_costs, False)
         self.item = item
 
     def __str__(self):
@@ -246,6 +243,6 @@ class UseItemAction(Action):
 
     def perform(self):
         self._calc_ap()
-        items = self.soldier.items
+        items = self.game_map.soldier.items
         del items[items.index(self.item)]
-        self.item.use(self.soldier)
+        self.item.use(self.game_map)

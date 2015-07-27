@@ -20,6 +20,8 @@
 # TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 # SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+import random
+
 import textcom
 
 
@@ -42,31 +44,31 @@ class Explosive(Item):
         self.damage = damage
         self.sound_descr = sound_descr
 
-    def use(self, soldier):
+    def use(self, game_map):
         print(self.sound_descr)
+        pod = game_map.get_current_room()
         # The grenade only affects some of the aliens in the room, but
         # is guaranteed to hit at least 1. It's not a bug, it's a
         # feature.
-        affected = textcom.room[textcom.roomNo]
-        for i in range(len(affected) + 1):
-            try:
-                alien = affected[i]
-                alien.hp -= self.damage
-                alien.cover = COVER_NONE
-                if alien.check_death():
-                    drop(soldier)
-                    soldier.check_promotion()
-            except (IndexError):
-                i = 0 #reset the loop
+        affected_aliens = [random.choice(pod)]
+        for alien in pod:
+            if alien not in affected_aliens and random.randrange(100) < 10:
+                affected_aliens.append(alien)
+        for alien in affected_aliens:
+            alien.hp -= self.damage
+            alien.cover = textcom.COVER_NONE
+            if alien.check_death():
+                game_map.drop()
+                game_map.soldier.check_promotion()
 
 
 class Medkit(Item):
     def __init__(self):
         super().__init__('Medkit', 10, '+4 HP')
 
-    def use(self, soldier):
+    def use(self, game_map):
         print("HP restored.")
-        soldier.hp += 4
+        game_map.soldier.hp += 4
 
 
 # XCOM items
