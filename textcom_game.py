@@ -41,15 +41,6 @@ from textcom.map import create_map
 from textcom.soldier import create_soldier
 from textcom.ui import get_int_input, status
 
-#human weapons + items
-drops = {0:"Frag Grenade",1:"Nano Serum",2:"Alien Grenade",3:"Light Plasma Rifle",4:"Plasma Rifle"}
-
-#aliem weapons, items and powers
-apowers = {0: "Mindfray",1: "Psi Boost"}
-
-#######
-# Map #
-#######
 
 NUMBER_OF_ROOMS = 31
 
